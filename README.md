@@ -7,8 +7,9 @@ python初学者的瞎玩.jpg
 
 ## 使用方法
 
-1. 安装依赖 `pip install websocket-client`
-2. 启动软件 `python main.py`
-3. 尽情使用吧！
+1. 安装并配置[Python3](https://www.python.org/downloads/windows/)
+2. 安装依赖 `pip install websocket-client`
+3. 启动软件 `python main.py`
+4. 尽情使用吧！
 
 本项目采用MIT协议

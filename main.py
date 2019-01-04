@@ -1,6 +1,10 @@
-from websocket import create_connection
 import time
+try:
+    import thread
+except ImportError:
+    import _thread as thread
 import json
+import websocket
 
 print("### BiLive_Client 服务端连接工具 ###")
 
@@ -12,23 +16,111 @@ print("\n请输入该客户端对应protocol：")
 
 protocol = input()
 
-option = "NOT CLOSE"
+option_tmp = {
+    "config": {},
+    "users": {},
+    "uid": [],
+    "info": {}
+}
 
-class wsSend():
+class MyWebSocket():
 
-    def run_options(self, ws, option):
+    def get_ts():
+        millis = int(round(time.time() * 1000))
+        return str(millis)
+
+    def msg_handler(msg):
+        cmd = msg["cmd"]
+        if cmd == "delUserData":
+            option_tmp["users"].pop(msg["uid"])
+            print("已删除用户：" + msg["uid"])
+        elif cmd == "getAllUID":
+            option_tmp["uid"] = msg["data"]
+            order = 0
+            while order < len(msg["data"]):
+                print(str(order + 1) + ": " + msg["data"][order])
+                order += 1
+            print("已获取UID列表")
+        elif cmd == "getConfig":
+            option_tmp["config"] = msg["data"]
+            indentData = json.dumps(msg["data"], indent = 4, separators=(', ', ': '))
+            print(indentData)
+            print("已获取全局设置")
+        elif cmd == "getUserData":
+            option_tmp["users"][msg["uid"]] = msg["data"]
+            indentData = json.dumps(msg["data"], indent = 4, separators=(', ', ': '))
+            print(indentData)
+            print("已获取" + msg["uid"] + "用户设置")
+        elif cmd == "newUserData":
+            option_tmp["users"][msg["uid"]] = msg["data"]
+            print("已新建用户：" + msg["uid"])
+        elif cmd == "setUserData":
+            text = json.dumps(msg)
+            if text.find("\\u53c2\\u6570\\u9519\\u8bef") == -1:
+                print("已更新" + msg["uid"] + "用户设置")
+            else:
+                print(msg["msg"])
+        elif cmd == "setConfig":
+            text = json.dumps(msg)
+            if text.find("\\u53c2\\u6570\\u9519\\u8bef") == -1:
+                print("已更新全局设置")
+            else:
+                print(msg["msg"])
+        elif cmd == "getInfo":
+            option_tmp["info"] = msg["data"]
+        else: return
+
+    def run_cmd(self, ws, option):
         if option.lower() == "addUser".lower() or option.lower() == "au".lower():
-            self.addUser(self, ws)
+            msg = { "cmd": "newUserData" }
+            ws.send(add_ts(msg))
         elif option.lower() == "delUser".lower() or option.lower() == "du".lower():
-            self.delUser(self, ws)
+            print("输入要删除的用户的uid序号：")
+            uid = input()
+            if (uid[len(uid)-1]) == ".":
+                num = uid[0:-1]
+                if num.isdecimal() is True:
+                    if int(num) <= len(option_tmp["uid"]):
+                        uid = option_tmp["uid"][int(num)-1]
+                    else:
+                        print("无效序号")
+                        return
+                else:
+                    print("无效序号")
+                    return
+            if option_tmp["users"]. __contains__(uid) is not True:
+                print("无效uid")
+                return
+            msg = { "cmd": "delUserData", "uid": uid }
+            ws.send(add_ts(msg))
         elif option.lower() == "getConfig".lower() or option.lower() == "gc".lower():
-            self.getConfig(self, ws)
+            msg = { "cmd":"getConfig" }
+            ws.send(add_ts(msg))
         elif option.lower() == "getInfo".lower() or option.lower() == "gi".lower():
-            self.getInfo(self, ws)
+            msg = { "cmd":"getInfo" }
+            ws.send(add_ts(msg))
         elif option.lower() == "getUID".lower() or option.lower() == "gud".lower():
-            self.getUID(self, ws)
+            msg = { "cmd":"getAllUID" }
+            ws.send(add_ts(msg))
         elif option.lower() == "getUser".lower() or option.lower() == "gu".lower():
-            self.getUser(self, ws)
+            print("输入要获取的用户的uid序号：")
+            uid = input()
+            if (uid[len(uid)-1]) == ".":
+                num = uid[0:-1]
+                if num.isdecimal() is True:
+                    if int(num) <= len(option_tmp["uid"]):
+                        uid = option_tmp["uid"][int(num)-1]
+                    else:
+                        print("无效序号")
+                        return
+                else:
+                    print("无效序号")
+                    return
+            if option_tmp["users"]. __contains__(uid) is not True:
+                print("无效uid")
+                return
+            msg = { "cmd": "getUserData", "uid": uid }
+            ws.send(add_ts(msg))
         elif option.lower() == "help".lower() or option.lower() == "h".lower():
             self.getHelp(self)
         elif option.lower() == "setConfig".lower() or option.lower() == "sc".lower():
@@ -71,161 +163,42 @@ class wsSend():
         millis = int(round(time.time() * 1000))
         return str(millis)
 
-    def addUser(self, ws):
-        data = "{\"cmd\":\"newUserData\",\"ts\":" + self.get_ts() + "}"
-        ws.send(data)
-        res = json.loads(ws.recv())
-        if res["cmd"] == "newUserData":
-            print("已新建用户：" + res["uid"] + "\n")
-        else:
-            print("未收到后端确认，请稍后重试或手动查阅用户信息以确认")
-            return
-
-    def delUser(self, ws):
-        data = "{\"cmd\":\"getAllUID\",\"ts\":" + self.get_ts() + "}"
-        ws.send(data)
-        listRes = json.loads(ws.recv())
-        if listRes["cmd"] == "getAllUID":
-            order = 0
-            while order < len(listRes["data"]):
-                print(str(order + 1) + ": " + listRes["data"][order])
-                order += 1
-            print("输入要删除的用户的uid序号：")
-            uid = input()
-            data = "{\"cmd\":\"delUserData\",\"uid\":\"" + listRes["data"][int(uid)-1] + "\",\"ts\":" + self.get_ts() + "}"
-            ws.send(data)
-            delRes = json.loads(ws.recv())
-            if delRes["cmd"] == "delUserData":
-                print("已删除用户：" + listRes["data"][int(uid)-1] + "\n")
-            else:
-                print("未收到后端确认，请稍后重试或手动查阅用户信息以确认")
-                return
-        else:
-            print("未获取到UID列表，请稍后再试")
-            return
-
-    def getUID(self, ws):
-        data = "{\"cmd\":\"getAllUID\",\"ts\":" + self.get_ts() + "}"
-        ws.send(data)
-        res = json.loads(ws.recv())
-        if res["cmd"] == "getAllUID":
-            order = 0
-            while order < len(res["data"]):
-                print(str(order + 1) + ": " + res["data"][order])
-                order += 1
-            print("已获取UID列表\n")
-        else:
-            print("未获取到UID列表，请稍后再试")
-            return
-
-    def getUser(self, ws):
-        data = "{\"cmd\":\"getAllUID\",\"ts\":" + self.get_ts() + "}"
-        ws.send(data)
-        listRes = json.loads(ws.recv())
-        if listRes["cmd"] == "getAllUID":
-            order = 0
-            while order < len(listRes["data"]):
-                print(str(order + 1) + ": " + listRes["data"][order])
-                order += 1
-            print("输入要获取的用户的uid序号：")
-            uid = input()
-            data = "{\"cmd\":\"getUserData\",\"uid\":\"" + listRes["data"][int(uid)-1] + "\",\"ts\":" + self.get_ts() + "}"
-            ws.send(data)
-            userRes = json.loads(ws.recv())
-            if userRes["cmd"] == "getUserData":
-                indentData = json.dumps(userRes["data"], indent = 4, separators=(', ', ': '))
-                print(indentData)
-                print("已获取" + listRes["data"][int(uid)-1] + "用户设置\n")
-            else:
-                print("未获取到有关用户信息，请稍后再试")
-                return
-        else:
-            print("未获取到UID列表，请稍后再试")
-            return
-
     def setUser(self, ws):
-        data = "{\"cmd\":\"getAllUID\",\"ts\":" + self.get_ts() + "}"
-        ws.send(data)
-        listRes = json.loads(ws.recv())
-        if listRes["cmd"] == "getAllUID":
-            order = 0
-            while order < len(listRes["data"]):
-                print(str(order + 1) + ": " + listRes["data"][order])
-                order += 1
-            print("输入要设置的用户的uid序号：")
-            uid = input()
-            data = "{\"cmd\":\"getUserData\",\"uid\":\"" + listRes["data"][int(uid)-1] + "\",\"ts\":" + self.get_ts() + "}"
-            ws.send(data)
-            userRes = json.loads(ws.recv())
-            if userRes["cmd"] == "getUserData":
-                configData = userRes["data"]
+        print("输入要设置的用户的uid：")
+        uid = input()
+        if (uid[len(uid)-1]) == ".":
+            num = uid[0:-1]
+            if num.isdecimal() is True:
+                if int(num) <= len(option_tmp["uid"]):
+                    uid = option_tmp["uid"][int(num)-1]
+                else:
+                    print("无效序号")
+                    return
             else:
-                print("未获取到有关用户信息，请稍后再试")
+                print("无效序号")
                 return
-            print("输入要设置的用户项目：")
-            key = input()
-            print("输入要设置的用户项目的值：")
-            val = input()
-            configData[key] = self.decide_type(val)
-            dataText = json.dumps(configData)
-            sendUserData = "{\"cmd\":\"setUserData\",\"uid\":\"" + listRes["data"][int(uid)-1] + "\",\"data\":" + dataText + ",\"ts\":" + self.get_ts() + "}"
-            ws.send(sendUserData)
-            res = json.loads(ws.recv())
-            if res["cmd"] == "setUserData":
-                print("已更新用户设置\n")
-            else:
-                print("未收到后端确认，请稍后重试或手动查阅用户信息以确认")
-                return
-        else:
-            print("未获取到UID列表，请稍后再试")
+        if option_tmp["users"]. __contains__(uid) is not True:
+            print("无效uid")
             return
-
-    def getConfig(self, ws):
-        data = "{\"cmd\":\"getConfig\",\"ts\":" + self.get_ts() + "}"
-        ws.send(data)
-        res = json.loads(ws.recv())
-        if res["cmd"] == "getConfig":
-            indentData = json.dumps(res["data"], indent=4, separators=(', ', ': '))
-            print(indentData)
-            print("已获取全局设置\n")
-        else:
-            print("未获取到全局设置，请稍后再试")
+        print("输入要设置的用户项目：")
+        key = input()
+        if option_tmp["users"][uid]. __contains__(key) is not True:
+            print("无效key")
             return
+        print("输入要设置的用户项目的值：")
+        val = input()
+        option_tmp["users"][uid][key] = self.decide_type(val)
+        msg = { "cmd":"setUserData", "uid": uid, "data": option_tmp["users"][uid] }
+        ws.send(add_ts(msg))
 
     def setConfig(self, ws):
-        data = "{\"cmd\":\"getConfig\",\"ts\":" + self.get_ts() + "}"
-        ws.send(data)
-        res = json.loads(ws.recv())
-        if res["cmd"] == "getConfig":
-            configData = res["data"]
-        else:
-            print("未获取到全局设置，请稍后再试")
-            return
         print("输入要设置的全局项目：")
         key = input()
         print("输入要设置的全局项目的值：")
         val = input()
-        configData[key] = self.decide_type(val)
-        dataText = json.dumps(configData)
-        sendUserData = "{\"cmd\":\"setConfig\",\"data\":" + dataText + ",\"ts\":" + self.get_ts() + "}"
-        ws.send(sendUserData)
-        if res["cmd"] == "setConfig":
-            print("已更新全局设置\n")
-        else:
-            print("未收到后端确认，请稍后重试或手动查阅全局设置以确认")
-            return
-
-    def getInfo(self, ws):
-        data = "{\"cmd\":\"getInfo\",\"ts\":" + self.get_ts() + "}"
-        ws.send(data)
-        res = json.loads(ws.recv())
-        if res["cmd"] == "getInfo":
-            indentData = json.dumps(res["data"], indent=4, separators=(', ', ': '))
-            print(indentData)
-            print("已获取参数描述\n")
-        else:
-            print("未获取到参数描述，请稍后再试")
-            return
+        option_tmp["config"][key] = self.decide_type(val)
+        msg = { "cmd":"setConfig", "data": option_tmp["config"] }
+        ws.send(add_ts(msg))
 
     def getHelp(self):
         print("帮助：")
@@ -243,11 +216,54 @@ class wsSend():
         print("对于布尔型，其描述符为bool，用0代表false，1代表true。如：0#bool(false)")
         print("对于数组，其描述符为list，用,分割数组项目。如：3,9#list([3,9])")
 
+def on_message(self, message):
+    msg = json.loads(message)
+    MyWebSocket.msg_handler(msg)
+
+def on_error(self, error):
+    print(error)
+
+def on_close(self):
+    print("############### closed ###############")
+
+def add_ts(msg):
+    msg["ts"] = MyWebSocket.get_ts()
+    message = json.dumps(msg)
+    return message
+
+def on_open(ws):
+    def run(*args):
+        msg = { "cmd":"getConfig" }
+        ws.send(add_ts(msg))
+        time.sleep(0.5)
+        msg = { "cmd":"getAllUID" }
+        ws.send(add_ts(msg))
+        time.sleep(0.5)
+        msg = { "cmd":"getInfo" }
+        ws.send(add_ts(msg))
+        time.sleep(0.5)
+        while len(option_tmp["users"]) < len(option_tmp["uid"]):
+            i = 0
+            while i < len(option_tmp["uid"]):
+                msg = { "cmd": "getUserData", "uid": option_tmp["uid"][i] }
+                ws.send(add_ts(msg))
+                i += 1
+                time.sleep(0.5)
+        time.sleep(1)
+        cmd = "NOT CLOSE"
+        print("options加载完毕")
+        while cmd != "close":
+            print("输入cmd:")
+            cmd = input()
+            MyWebSocket.run_cmd(MyWebSocket, ws, cmd)
+        ws.close()
+    thread.start_new_thread(run, ())
 
 if __name__ == "__main__":
-    ws = create_connection(url, subprotocols=[protocol])
-    print("Connected to " + url + "\n")
-    while option != "close" :
-        option = input()
-        wsSend.run_options(wsSend, ws, option)
-    ws.close()
+    #websocket.enableTrace(True)
+    ws = websocket.WebSocketApp(url, subprotocols=[protocol],
+        on_message = on_message,
+        on_error = on_error,
+        on_close = on_close)
+    ws.on_open = on_open
+    ws.run_forever()
