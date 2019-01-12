@@ -29,7 +29,7 @@ class MyWebSocket():
         millis = int(round(time.time() * 1000))
         return str(millis)
 
-    def msg_handler(msg):
+    def msg_handler(msg, ws):
         cmd = msg["cmd"]
         if cmd == "delUserData":
             option_tmp["users"].pop(msg["uid"])
@@ -188,7 +188,9 @@ class MyWebSocket():
         print("输入要设置的用户项目的值：")
         val = input()
         option_tmp["users"][uid][key] = self.decide_type(val)
-        msg = { "cmd":"setUserData", "uid": uid, "data": option_tmp["users"][uid] }
+        print("输入用户" + uid + "的验证码（可不填）：")
+        captcha = input()
+        msg = { "cmd":"setUserData", "uid": uid, "data": option_tmp["users"][uid], "captcha": captcha }
         ws.send(add_ts(msg))
 
     def setConfig(self, ws):
@@ -218,7 +220,7 @@ class MyWebSocket():
 
 def on_message(self, message):
     msg = json.loads(message)
-    MyWebSocket.msg_handler(msg)
+    MyWebSocket.msg_handler(msg, ws)
 
 def on_error(self, error):
     print(error)
